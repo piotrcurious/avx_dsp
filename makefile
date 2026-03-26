@@ -12,7 +12,7 @@ EX_OBJS = $(EX_SRCS:.c=.o) # the example object file
 EX_NAME = avx_dsp_example # the example name
 
 # The default rule
-all: lib example tests
+all: lib example
 
 # The rule to build the library
 lib: $(LIB_OBJS)
@@ -22,12 +22,18 @@ lib: $(LIB_OBJS)
 example: $(EX_OBJS)
 	$(CC) -o $(EX_NAME) $(EX_OBJS) $(LDFLAGS)
 
-# The rule to build and run tests
+# The rule to build and run basic tests
 tests: tests.c avx_dsp.c
 	$(CC) $(CFLAGS) tests.c avx_dsp.c -o tests -lm
 	LD_LIBRARY_PATH=. ./tests
 
+# The rule to generate data and run large tests
+tests_large: tests_large.c avx_dsp.c generate_data.py
+	python3 generate_data.py
+	$(CC) $(CFLAGS) tests_large.c avx_dsp.c -o tests_large -lm
+	LD_LIBRARY_PATH=. ./tests_large
+
 # The rule to clean up the generated files
 clean:
-	rm -f $(LIB_OBJS) $(LIB_NAME) $(EX_OBJS) $(EX_NAME) tests
+	rm -f $(LIB_OBJS) $(LIB_NAME) $(EX_OBJS) $(EX_NAME) tests tests_large *.bin
  
