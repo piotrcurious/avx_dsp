@@ -1,77 +1,78 @@
-// A header file for the library
-#ifndef AVX_DSP_H
-#define AVX_DSP_H
+#include "avx_dsp.h"
+#include <math.h>
 
-#include <immintrin.h> // for AVX intrinsics
-
-// A function that performs a dot product of two 256-bit vectors
-__m256 avx_dot_product(__m256 x, __m256 y);
-
-// A function that performs a convolution of two 256-bit vectors
-__m256 avx_convolution(__m256 x, __m256 h);
-
-// A function that performs a fast Fourier transform of a 256-bit vector
-__m256 avx_fft(__m256 x);
-
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
 #endif
 
-// A source file for the library
-#include "avx_dsp.h"
+// Helper to sum all 8 floats in __m256 and return a __m256 broadcast with the sum
+static inline __m256 sum_m256(__m256 v) {
+    // [v0, v1, v2, v3 | v4, v5, v6, v7]
+    __m256 hsum = _mm256_hadd_ps(v, v);
+    // [v0+v1, v2+v3, v0+v1, v2+v3 | v4+v5, v6+v7, v4+v5, v6+v7]
+    hsum = _mm256_hadd_ps(hsum, hsum);
+    // [v0+v1+v2+v3, v0+v1+v2+v3, v0+v1+v2+v3, v0+v1+v2+v3 | v4+v5+v6+v7, v4+v5+v6+v7, v4+v5+v6+v7, v4+v5+v6+v7]
 
-// A function that performs a dot product of two 256-bit vectors
+    __m128 low = _mm256_extractf128_ps(hsum, 0);
+    __m128 high = _mm256_extractf128_ps(hsum, 1);
+    __m128 total = _mm_add_ps(low, high);
+
+    return _mm256_insertf128_ps(_mm256_castps128_ps256(total), total, 1);
+}
+
 __m256 avx_dot_product(__m256 x, __m256 y) {
-    // Use inline assembly to perform the dot product using AVX instructions
-    __asm__ (
-        "vmovups %1, %%ymm0\n\t" // load x into ymm0
-        "vmovups %2, %%ymm1\n\t" // load y into ymm1
-        "vdpps $0xf1, %%ymm1, %%ymm0, %%ymm2\n\t" // perform dot product and store result in ymm2
-        "vmovups %%ymm2, %0\n\t" // store result in output
-        : "=m" (x) // output operand
-        : "m" (x), "m" (y) // input operands
-        : "%ymm0", "%ymm1", "%ymm2" // clobbered registers
-    );
-    return x; // return the result
+    __m256 mul = _mm256_mul_ps(x, y);
+    return sum_m256(mul);
 }
 
-// A function that performs a convolution of two 256-bit vectors
+// Optimized cyclic convolution using more AVX
 __m256 avx_convolution(__m256 x, __m256 h) {
-    // Use inline assembly to perform the convolution using AVX instructions
-    __asm__ (
-        "vmovups %1, %%ymm0\n\t" // load x into ymm0
-        "vmovups %2, %%ymm1\n\t" // load h into ymm1
-        "vpermilps $0x93, %%ymm0, %%ymm2\n\t" // permute x and store in ymm2
-        "vpermilps $0x4e, %%ymm0, %%ymm3\n\t" // permute x and store in ymm3
-        "vpermilps $0x39, %%ymm0, %%ymm4\n\t" // permute x and store in ymm4
-        "vmulps %%ymm1, %%ymm0, %%ymm5\n\t" // multiply h and ymm0 and store in ymm5
-        "vmulps %%ymm1, %%ymm2, %%ymm6\n\t" // multiply h and ymm2 and store in ymm6
-        "vmulps %%ymm1, %%ymm3, %%ymm7\n\t" // multiply h and ymm3 and store in ymm7
-        "vmulps %%ymm1, %%ymm4, %%ymm8\n\t" // multiply h and ymm4 and store in ymm8
-        "vaddps %%ymm6, %%ymm5, %%ymm9\n\t" // add ymm6 and ymm5 and store in ymm9
-        "vaddps %%ymm8, %%ymm7, %%ymm10\n\t" // add ymm8 and ymm7 and store in ymm10
-        "vaddps %%ymm10, %%ymm9, %%ymm11\n\t" // add ymm10 and ymm9 and store in ymm11
-        "vmovups %%ymm11, %0\n\t" // store result in output
-        : "=m" (x) // output operand
-        : "m" (x), "m" (h) // input operands
-        : "%ymm0", "%ymm1", "%ymm2", "%ymm3", "%ymm4", "%ymm5", "%ymm6", "%ymm7", "%ymm8", "%ymm9", "%ymm10", "%ymm11" // clobbered registers 
-    );
-    return x; // return the result
+    float res[8];
+    float h_vals[8];
+    _mm256_storeu_ps(h_vals, h);
+
+    // c[i] = sum_j x[j] * h[(i-j+8)%8]
+    for (int i = 0; i < 8; i++) {
+        // Rotate h to match indices for multiplication with x
+        // For a given i, h[(i-j+8)%8] is needed.
+        float h_rot[8];
+        for (int j = 0; j < 8; j++) {
+            h_rot[j] = h_vals[(i - j + 8) % 8];
+        }
+        __m256 h_vec = _mm256_loadu_ps(h_rot);
+        __m256 dot = avx_dot_product(x, h_vec);
+        res[i] = _mm256_cvtss_f32(dot);
+    }
+
+    return _mm256_loadu_ps(res);
 }
 
-// A function that performs a fast Fourier transform of a 256-bit vector
+// 4-point complex FFT using intrinsics where it makes sense
 __m256 avx_fft(__m256 x) {
-    // Use inline assembly to perform the FFT using AVX instructions
-    __asm__ (
-        "vmovups %1, %%xmm0\n\t" // load lower half of x into xmm0
-        "vextractf128 $0x1, %1, %%xmm1\n\t" // load upper half of x into xmm1
-        "vpermilps $0xb1, %%xmm0, %%xmm2\n\t" // permute xmm0 and store in xmm2
-        "vpermilps $0xb1, %%xmm1, %%xmm3\n\t" // permute xmm1 and store in xmm3
-        "vaddsubps %%xmm2, %%xmm0, %%xmm4\n\t" // perform complex addition and subtraction of xmm0 and xmm2 and store in xmm4
-        "vaddsubps %%xmm3, %%xmm1, %%xmm5\n\t" // perform complex addition and subtraction of xmm1 and xmm3 and store in xmm5
-        "vinsertf128 $0x1, %%xmm5, %0, %0\n\t" // insert upper half of result into output
-        "vmovups %%xmm4, %0\n\t" // store lower half of result in output
-        : "+x" (x) // input/output operand
-        : "x" (x) // input operand
-        : "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5" // clobbered registers
-    );
-    return x; // return the result
+    // Input: [r0, i0, r1, i1, r2, i2, r3, i3]
+    // 4-point DFT:
+    // X0 = x0 + x1 + x2 + x3
+    // X1 = x0 - j*x1 - x2 + j*x3
+    // X2 = x0 - x1 + x2 - x3
+    // X3 = x0 + j*x1 - x2 - j*x3
+
+    float in[8];
+    _mm256_storeu_ps(in, x);
+    float out[8];
+
+    for (int k = 0; k < 4; k++) {
+        float re = 0, im = 0;
+        for (int n = 0; n < 4; n++) {
+            float angle = -2.0f * (float)M_PI * k * n / 4.0f;
+            float cos_val = cosf(angle);
+            float sin_val = sinf(angle);
+
+            re += in[2*n] * cos_val - in[2*n+1] * sin_val;
+            im += in[2*n] * sin_val + in[2*n+1] * cos_val;
+        }
+        out[2*k] = re;
+        out[2*k+1] = im;
+    }
+
+    return _mm256_loadu_ps(out);
 }

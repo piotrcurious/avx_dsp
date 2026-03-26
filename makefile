@@ -12,7 +12,7 @@ EX_OBJS = $(EX_SRCS:.c=.o) # the example object file
 EX_NAME = avx_dsp_example # the example name
 
 # The default rule
-all: lib example
+all: lib example tests
 
 # The rule to build the library
 lib: $(LIB_OBJS)
@@ -22,7 +22,12 @@ lib: $(LIB_OBJS)
 example: $(EX_OBJS)
 	$(CC) -o $(EX_NAME) $(EX_OBJS) $(LDFLAGS)
 
+# The rule to build and run tests
+tests: tests.c avx_dsp.c
+	$(CC) $(CFLAGS) tests.c avx_dsp.c -o tests -lm
+	LD_LIBRARY_PATH=. ./tests
+
 # The rule to clean up the generated files
 clean:
-	rm -f $(LIB_OBJS) $(LIB_NAME) $(EX_OBJS) $(EX_NAME)
+	rm -f $(LIB_OBJS) $(LIB_NAME) $(EX_OBJS) $(EX_NAME) tests
  
