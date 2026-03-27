@@ -25,8 +25,9 @@ demo: lib gui_demo.cpp audio_engine.c
 	$(CXX) $(CXXFLAGS) gui_demo.cpp audio_engine.o -o gui_demo $(LDFLAGS) $(FLTK_LDFLAGS)
 
 # The rule to build the phase-sensitive GUI demo
-phase_demo: lib gui_phase_demo.cpp
-	$(CXX) $(CXXFLAGS) gui_phase_demo.cpp -o gui_phase_demo $(LDFLAGS) $(FLTK_LDFLAGS)
+phase_demo: lib gui_phase_demo.cpp audio_engine.c
+	$(CC) $(CFLAGS) -c audio_engine.c -o audio_engine.o
+	$(CXX) $(CXXFLAGS) gui_phase_demo.cpp audio_engine.o -o gui_phase_demo $(LDFLAGS) $(FLTK_LDFLAGS)
 
 # The rule to build and run large tests
 tests_large: lib tests_large.c generate_data.py
