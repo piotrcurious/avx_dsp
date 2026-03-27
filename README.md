@@ -65,3 +65,5 @@ HEADLESS=1 LD_LIBRARY_PATH=. ./gui_demo
 
 ---
 Original interface by Bing AI. Extensively improved and expanded for functionality, performance, and visualization.
+
+UBI AI license. 
