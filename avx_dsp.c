@@ -34,8 +34,12 @@ static inline __m256 sum_m256(__m256 v) {
 #define IS_ALIGNED(p) (((uintptr_t)(p) & 31) == 0)
 
 __m256 avx_dot_product(__m256 x, __m256 y) {
+#ifdef __FMA__
+    return sum_m256(_mm256_fmadd_ps(x, y, _mm256_setzero_ps()));
+#else
     __m256 mul = _mm256_mul_ps(x, y);
     return sum_m256(mul);
+#endif
 }
 
 float avx_dot_product_array(const float* a, const float* b, size_t size) {
@@ -46,7 +50,11 @@ float avx_dot_product_array(const float* a, const float* b, size_t size) {
     for (; i + 7 < size; i += 8) {
         __m256 va = aligned ? _mm256_load_ps(a + i) : _mm256_loadu_ps(a + i);
         __m256 vb = aligned ? _mm256_load_ps(b + i) : _mm256_loadu_ps(b + i);
+#ifdef __FMA__
+        acc = _mm256_fmadd_ps(va, vb, acc);
+#else
         acc = _mm256_add_ps(acc, _mm256_mul_ps(va, vb));
+#endif
     }
 
     __m256 hsum = sum_m256(acc);
@@ -91,7 +99,11 @@ void avx_convolution_array(const float* x, size_t x_size, const float* h, size_t
         for (; j + 7 < h_size; j += 8) {
             __m256 vh = aligned_h ? _mm256_load_ps(h + j) : _mm256_loadu_ps(h + j);
             __m256 vy = (aligned_y && IS_ALIGNED(y + i + j)) ? _mm256_load_ps(y + i + j) : _mm256_loadu_ps(y + i + j);
+#ifdef __FMA__
+            vy = _mm256_fmadd_ps(vx, vh, vy);
+#else
             vy = _mm256_add_ps(vy, _mm256_mul_ps(vx, vh));
+#endif
             if (aligned_y && IS_ALIGNED(y + i + j)) _mm256_store_ps(y + i + j, vy);
             else _mm256_storeu_ps(y + i + j, vy);
         }
@@ -176,6 +188,54 @@ void avx_fft_array(float* x, size_t n) {
                 x[2*(k_idx + m2)] = u_re - t_re;
                 x[2*(k_idx + m2) + 1] = u_im - t_im;
             }
+        }
+    }
+}
+
+void avx_window_hann(float* x, size_t n) {
+    size_t i = 0;
+    int aligned = IS_ALIGNED(x);
+    for (; i + 7 < n; i += 8) {
+        float w[8];
+        for (int j = 0; j < 8; j++) {
+            w[j] = 0.5f * (1.0f - cosf(2.0f * (float)M_PI * (i + j) / (n - 1)));
+        }
+        __m256 vw = _mm256_loadu_ps(w);
+        __m256 vx = aligned ? _mm256_load_ps(x + i) : _mm256_loadu_ps(x + i);
+        vx = _mm256_mul_ps(vx, vw);
+        if (aligned) _mm256_store_ps(x + i, vx);
+        else _mm256_storeu_ps(x + i, vx);
+    }
+    for (; i < n; i++) {
+        x[i] *= 0.5f * (1.0f - cosf(2.0f * (float)M_PI * i / (n - 1)));
+    }
+}
+
+void avx_window_hamming(float* x, size_t n) {
+    size_t i = 0;
+    int aligned = IS_ALIGNED(x);
+    for (; i + 7 < n; i += 8) {
+        float w[8];
+        for (int j = 0; j < 8; j++) {
+            w[j] = 0.54f - 0.46f * cosf(2.0f * (float)M_PI * (i + j) / (n - 1));
+        }
+        __m256 vw = _mm256_loadu_ps(w);
+        __m256 vx = aligned ? _mm256_load_ps(x + i) : _mm256_loadu_ps(x + i);
+        vx = _mm256_mul_ps(vx, vw);
+        if (aligned) _mm256_store_ps(x + i, vx);
+        else _mm256_storeu_ps(x + i, vx);
+    }
+    for (; i < n; i++) {
+        x[i] *= 0.54f - 0.46f * cosf(2.0f * (float)M_PI * i / (n - 1));
+    }
+}
+
+void avx_fir_filter(const float* x, size_t n, const float* h, size_t h_size, float* y) {
+    for (size_t i = 0; i < n; i++) {
+        y[i] = 0;
+        size_t taps = (i < h_size) ? i + 1 : h_size;
+        for (size_t j = 0; j < taps; j++) {
+            y[i] += x[i - j] * h[j];
         }
     }
 }

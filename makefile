@@ -2,7 +2,7 @@
 
 # Define some variables
 CC = gcc # the C compiler
-CFLAGS = -Wall -O3 -mavx # the C compiler flags
+CFLAGS = -Wall -O3 -mavx -mfma # the C compiler flags
 LDFLAGS = -L. -lavx_dsp # the linker flags
 LIB_SRCS = avx_dsp.c # the library source file
 LIB_OBJS = $(LIB_SRCS:.c=.o) # the library object file
