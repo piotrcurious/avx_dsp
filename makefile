@@ -1,44 +1,41 @@
-# A makefile for compiling the avx_dsp library and the example file
+# A makefile for compiling the avx_dsp library and the demo apps
 
 # Define some variables
-CC = gcc # the C compiler
-CFLAGS = -Wall -O3 -mavx -mfma # the C compiler flags
-LDFLAGS = -L. -lavx_dsp -lm # the linker flags
-LIB_SRCS = avx_dsp.c # the library source file
-LIB_OBJS = $(LIB_SRCS:.c=.o) # the library object file
-LIB_NAME = libavx_dsp.so # the library name
-EX_SRCS = avx_dsp_example.c # the example source file
-EX_OBJS = $(EX_SRCS:.c=.o) # the example object file
-EX_NAME = avx_dsp_example # the example name
+CC = gcc
+CXX = g++
+CFLAGS = -Wall -O3 -mavx -mfma
+CXXFLAGS = -Wall -O3 -mavx -mfma $(shell fltk-config --cxxflags)
+LDFLAGS = -L. -lavx_dsp -lm
+FLTK_LDFLAGS = $(shell fltk-config --ldflags --use-gl) -lGL -lGLU -lasound
+
+LIB_SRCS = avx_dsp.c
+LIB_OBJS = $(LIB_SRCS:.c=.o)
+LIB_NAME = libavx_dsp.so
 
 # The default rule
-all: lib example
+all: lib demo
 
 # The rule to build the library
 lib: $(LIB_OBJS)
 	$(CC) -shared -o $(LIB_NAME) $(LIB_OBJS) -lm
 
-# The rule to build the example file
-example: lib $(EX_OBJS)
-	$(CC) -o $(EX_NAME) $(EX_OBJS) $(LDFLAGS)
+# The rule to build the GUI demo
+demo: lib gui_demo.cpp audio_engine.c
+	$(CC) $(CFLAGS) -c audio_engine.c -o audio_engine.o
+	$(CXX) $(CXXFLAGS) gui_demo.cpp audio_engine.o -o gui_demo $(LDFLAGS) $(FLTK_LDFLAGS)
 
-# The rule to build and run basic tests
-tests: lib tests.c avx_dsp.c
-	$(CC) $(CFLAGS) tests.c avx_dsp.c -o tests -lm
-	LD_LIBRARY_PATH=. ./tests
-
-# The rule to generate data and run large tests
-tests_large: lib tests_large.c avx_dsp.c generate_data.py
+# The rule to build and run large tests
+tests_large: lib tests_large.c generate_data.py
 	python3 generate_data.py
 	$(CC) $(CFLAGS) tests_large.c avx_dsp.c -o tests_large -lm
 	LD_LIBRARY_PATH=. ./tests_large
 
 # The rule to run benchmarks
-benchmark: lib benchmark.c avx_dsp.c
+benchmark: lib benchmark.c
 	$(CC) $(CFLAGS) benchmark.c avx_dsp.c -o benchmark -lm
 	LD_LIBRARY_PATH=. ./benchmark
 
-# The rule to clean up the generated files
+# The rule to clean up
 clean:
-	rm -f $(LIB_OBJS) $(LIB_NAME) $(EX_OBJS) $(EX_NAME) tests tests_large benchmark benchmark_align test_fft *.bin
+	rm -f *.o $(LIB_NAME) gui_demo tests_large benchmark *.bin avx_dsp_example tests
  

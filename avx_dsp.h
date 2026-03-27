@@ -4,6 +4,10 @@
 #include <immintrin.h> // for AVX intrinsics
 #include <stddef.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief Aligned memory allocation for floats.
  */
@@ -71,11 +75,11 @@ void avx_complex_multiply_array(const float* a, const float* b, size_t n, float*
 
 /**
  * @brief Computes the magnitude of complex numbers in an array.
- *
- * @param x Input complex array (2*n elements).
- * @param n Number of complex points.
- * @param out Output magnitude array (n elements).
  */
 void avx_vector_magnitude(const float* x, size_t n, float* out);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif
