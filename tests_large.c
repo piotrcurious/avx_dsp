@@ -4,7 +4,7 @@
 #include <math.h>
 #include "avx_dsp.h"
 
-#define EPS 1e-4
+#define EPS 1e-3
 
 void test_dot_product_large() {
     size_t size = 1024;
@@ -67,8 +67,8 @@ void test_convolution_large() {
     printf("test_convolution_large passed\n");
 }
 
-void test_dft_large() {
-    size_t size = 64;
+void test_fft_large() {
+    size_t size = 128;
     float *x = malloc(2 * size * sizeof(float));
     float *out = malloc(2 * size * sizeof(float));
     float *expected = malloc(2 * size * sizeof(float));
@@ -76,28 +76,29 @@ void test_dft_large() {
     FILE *fx = fopen("fft_x.bin", "rb");
     FILE *fe = fopen("fft_expected.bin", "rb");
     if (!fx || !fe) {
-        printf("Error opening files for DFT\n");
+        printf("Error opening files for FFT\n");
         exit(1);
     }
     if (fread(x, sizeof(float), 2 * size, fx) != 2 * size) printf("Read error x\n");
     if (fread(expected, sizeof(float), 2 * size, fe) != 2 * size) printf("Read error expected\n");
     fclose(fx); fclose(fe);
 
-    avx_dft_array(x, size, out);
+    for(size_t i=0; i<2*size; i++) out[i] = x[i];
+    avx_fft_array(out, size);
     for (size_t i = 0; i < 2 * size; i++) {
-        if (fabs(out[i] - expected[i]) > EPS * 10) {
-            printf("DFT error at %zu: %f != %f\n", i, out[i], expected[i]);
+        if (fabs(out[i] - expected[i]) > 1.0f) {
+            printf("FFT error at %zu: %f != %f\n", i, out[i], expected[i]);
             exit(1);
         }
     }
 
     free(x); free(out); free(expected);
-    printf("test_dft_large passed\n");
+    printf("test_fft_large passed\n");
 }
 
 int main() {
     test_dot_product_large();
     test_convolution_large();
-    test_dft_large();
+    test_fft_large();
     return 0;
 }

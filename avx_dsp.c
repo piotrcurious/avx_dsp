@@ -1,9 +1,22 @@
 #include "avx_dsp.h"
 #include <math.h>
+#include <string.h>
+#include <stdlib.h>
+#include <stdint.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
+
+float* avx_malloc(size_t size) {
+    void* ptr = NULL;
+    if (posix_memalign(&ptr, 32, size * sizeof(float)) != 0) return NULL;
+    return (float*)ptr;
+}
+
+void avx_free(float* ptr) {
+    free(ptr);
+}
 
 // Helper to sum all 8 floats in __m256 and return a __m256 broadcast with the sum
 static inline __m256 sum_m256(__m256 v) {
@@ -17,6 +30,9 @@ static inline __m256 sum_m256(__m256 v) {
     return _mm256_insertf128_ps(_mm256_castps128_ps256(hsum), hsum, 1);
 }
 
+// Check if pointer is 32-byte aligned
+#define IS_ALIGNED(p) (((uintptr_t)(p) & 31) == 0)
+
 __m256 avx_dot_product(__m256 x, __m256 y) {
     __m256 mul = _mm256_mul_ps(x, y);
     return sum_m256(mul);
@@ -25,9 +41,11 @@ __m256 avx_dot_product(__m256 x, __m256 y) {
 float avx_dot_product_array(const float* a, const float* b, size_t size) {
     __m256 acc = _mm256_setzero_ps();
     size_t i = 0;
+    int aligned = IS_ALIGNED(a) && IS_ALIGNED(b);
+
     for (; i + 7 < size; i += 8) {
-        __m256 va = _mm256_loadu_ps(a + i);
-        __m256 vb = _mm256_loadu_ps(b + i);
+        __m256 va = aligned ? _mm256_load_ps(a + i) : _mm256_loadu_ps(a + i);
+        __m256 vb = aligned ? _mm256_load_ps(b + i) : _mm256_loadu_ps(b + i);
         acc = _mm256_add_ps(acc, _mm256_mul_ps(va, vb));
     }
 
@@ -64,14 +82,18 @@ void avx_convolution_array(const float* x, size_t x_size, const float* h, size_t
         y[i] = 0;
     }
 
+    int aligned_h = IS_ALIGNED(h);
+    int aligned_y = IS_ALIGNED(y);
+
     for (size_t i = 0; i < x_size; i++) {
         size_t j = 0;
         __m256 vx = _mm256_set1_ps(x[i]);
         for (; j + 7 < h_size; j += 8) {
-            __m256 vh = _mm256_loadu_ps(h + j);
-            __m256 vy = _mm256_loadu_ps(y + i + j);
+            __m256 vh = aligned_h ? _mm256_load_ps(h + j) : _mm256_loadu_ps(h + j);
+            __m256 vy = (aligned_y && IS_ALIGNED(y + i + j)) ? _mm256_load_ps(y + i + j) : _mm256_loadu_ps(y + i + j);
             vy = _mm256_add_ps(vy, _mm256_mul_ps(vx, vh));
-            _mm256_storeu_ps(y + i + j, vy);
+            if (aligned_y && IS_ALIGNED(y + i + j)) _mm256_store_ps(y + i + j, vy);
+            else _mm256_storeu_ps(y + i + j, vy);
         }
         for (; j < h_size; j++) {
             y[i + j] += x[i] * h[j];
@@ -112,5 +134,48 @@ void avx_dft_array(const float* x, size_t size, float* out) {
         }
         out[2*k] = re;
         out[2*k+1] = im;
+    }
+}
+
+// Radix-2 FFT Implementation
+static void bit_reversal(float* x, size_t n) {
+    size_t j = 0;
+    for (size_t i = 0; i < n; i++) {
+        if (i < j) {
+            float temp_re = x[2*i];
+            float temp_im = x[2*i+1];
+            x[2*i] = x[2*j];
+            x[2*i+1] = x[2*j+1];
+            x[2*j] = temp_re;
+            x[2*j+1] = temp_im;
+        }
+        size_t m = n >> 1;
+        while (m >= 1 && j >= m) {
+            j -= m;
+            m >>= 1;
+        }
+        j += m;
+    }
+}
+
+void avx_fft_array(float* x, size_t n) {
+    bit_reversal(x, n);
+    for (size_t s = 1; s <= (size_t)log2(n); s++) {
+        size_t m = 1 << s;
+        size_t m2 = m >> 1;
+        for (size_t j = 0; j < m2; j++) {
+            float w_re = cosf(-2.0f * (float)M_PI * j / m);
+            float w_im = sinf(-2.0f * (float)M_PI * j / m);
+            for (size_t k_idx = j; k_idx < n; k_idx += m) {
+                float t_re = w_re * x[2*(k_idx + m2)] - w_im * x[2*(k_idx + m2) + 1];
+                float t_im = w_re * x[2*(k_idx + m2) + 1] + w_im * x[2*(k_idx + m2)];
+                float u_re = x[2*k_idx];
+                float u_im = x[2*k_idx + 1];
+                x[2*k_idx] = u_re + t_re;
+                x[2*k_idx + 1] = u_im + t_im;
+                x[2*(k_idx + m2)] = u_re - t_re;
+                x[2*(k_idx + m2) + 1] = u_im - t_im;
+            }
+        }
     }
 }

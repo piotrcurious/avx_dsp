@@ -33,7 +33,12 @@ tests_large: tests_large.c avx_dsp.c generate_data.py
 	$(CC) $(CFLAGS) tests_large.c avx_dsp.c -o tests_large -lm
 	LD_LIBRARY_PATH=. ./tests_large
 
+# The rule to run benchmarks
+benchmark: benchmark.c avx_dsp.c
+	$(CC) $(CFLAGS) benchmark.c avx_dsp.c -o benchmark -lm
+	LD_LIBRARY_PATH=. ./benchmark
+
 # The rule to clean up the generated files
 clean:
-	rm -f $(LIB_OBJS) $(LIB_NAME) $(EX_OBJS) $(EX_NAME) tests tests_large *.bin
+	rm -f $(LIB_OBJS) $(LIB_NAME) $(EX_OBJS) $(EX_NAME) tests tests_large benchmark benchmark_align test_fft *.bin
  
