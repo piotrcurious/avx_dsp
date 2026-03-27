@@ -114,10 +114,8 @@ void avx_dft_array(const float* x, size_t size, float* out) {
         float re = 0, im = 0;
         for (size_t n = 0; n < size; n++) {
             float angle = -2.0f * (float)M_PI * k * n / size;
-            float cos_val = cosf(angle);
-            float sin_val = sinf(angle);
-            re += x[2*n] * cos_val - x[2*n+1] * sin_val;
-            im += x[2*n] * sin_val + x[2*n+1] * cos_val;
+            re += x[2*n] * cosf(angle) - x[2*n+1] * sinf(angle);
+            im += x[2*n] * sinf(angle) + x[2*n+1] * cosf(angle);
         }
         out[2*k] = re;
         out[2*k+1] = im;
@@ -157,6 +155,50 @@ void avx_fft_array(float* x, size_t n) {
     }
 }
 
+avx_fft_ctx_t* avx_fft_init(size_t n) {
+    if ((n & (n - 1)) != 0 || n == 0) return NULL;
+    avx_fft_ctx_t *ctx = (avx_fft_ctx_t*)malloc(sizeof(avx_fft_ctx_t));
+    ctx->n = n;
+    size_t num_twiddles = 0;
+    for (size_t m = 2; m <= n; m <<= 1) num_twiddles += m;
+    ctx->twiddles = avx_malloc(num_twiddles);
+    size_t offset = 0;
+    for (size_t m = 2; m <= n; m <<= 1) {
+        size_t m2 = m >> 1;
+        for (size_t j = 0; j < m2; j++) {
+            ctx->twiddles[offset + 2 * j] = cosf(-2.0f * (float)M_PI * j / m);
+            ctx->twiddles[offset + 2 * j + 1] = sinf(-2.0f * (float)M_PI * j / m);
+        }
+        offset += m;
+    }
+    return ctx;
+}
+
+void avx_fft_execute(avx_fft_ctx_t *ctx, float *x) {
+    size_t n = ctx->n;
+    bit_reversal(x, n);
+    size_t offset = 0;
+    for (size_t s = 1; s <= (size_t)log2(n); s++) {
+        size_t m = 1 << s; size_t m2 = m >> 1;
+        for (size_t j = 0; j < m2; j++) {
+            float w_re = ctx->twiddles[offset + 2 * j];
+            float w_im = ctx->twiddles[offset + 2 * j + 1];
+            for (size_t k_idx = j; k_idx < n; k_idx += m) {
+                float t_re = w_re * x[2*(k_idx + m2)] - w_im * x[2*(k_idx + m2) + 1];
+                float t_im = w_re * x[2*(k_idx + m2) + 1] + w_im * x[2*(k_idx + m2)];
+                float u_re = x[2*k_idx]; float u_im = x[2*k_idx + 1];
+                x[2*k_idx] = u_re + t_re; x[2*k_idx + 1] = u_im + t_im;
+                x[2*(k_idx + m2)] = u_re - t_re; x[2*(k_idx + m2) + 1] = u_im - t_im;
+            }
+        }
+        offset += m;
+    }
+}
+
+void avx_fft_free(avx_fft_ctx_t *ctx) {
+    if (ctx) { avx_free(ctx->twiddles); free(ctx); }
+}
+
 void avx_window_hann(float* x, size_t n) {
     size_t i = 0; int aligned = IS_ALIGNED(x);
     for (; i + 7 < n; i += 8) {
@@ -184,23 +226,33 @@ void avx_window_hamming(float* x, size_t n) {
 }
 
 void avx_fir_filter(const float* x, size_t n, const float* h, size_t h_size, float* y) {
-    for (size_t i = 0; i < n; i++) {
-        size_t taps = (i < h_size) ? i + 1 : h_size;
-        float sum = 0; size_t j = 0; __m256 acc = _mm256_setzero_ps();
-        for (; j + 7 < taps; j += 8) {
-            float x_block[8];
-            for(int k=0; k<8; k++) x_block[k] = x[i - (j + k)];
-            __m256 vx = _mm256_loadu_ps(x_block);
-            __m256 vh = _mm256_loadu_ps(h + j);
+    // Blocked implementation for better cache locality and SIMD usage
+    for (size_t i = 0; i < n; i++) y[i] = 0;
+
+    const size_t block_size = 64; // Process signal in blocks
+    for (size_t ib = 0; ib < n; ib += block_size) {
+        size_t ie = (ib + block_size < n) ? ib + block_size : n;
+        for (size_t j = 0; j < h_size; j++) {
+            __m256 vh = _mm256_set1_ps(h[j]);
+            size_t i = ib;
+            // Handle startup edge where i - j < 0
+            while (i < ie && (intptr_t)i - (intptr_t)j < 0) {
+                i++;
+            }
+            for (; i + 7 < ie; i += 8) {
+                __m256 vx = _mm256_loadu_ps(x + i - j);
+                __m256 vy = _mm256_loadu_ps(y + i);
 #ifdef __FMA__
-            acc = _mm256_fmadd_ps(vx, vh, acc);
+                vy = _mm256_fmadd_ps(vx, vh, vy);
 #else
-            acc = _mm256_add_ps(acc, _mm256_mul_ps(vx, vh));
+                vy = _mm256_add_ps(vy, _mm256_mul_ps(vx, vh));
 #endif
+                _mm256_storeu_ps(y + i, vy);
+            }
+            for (; i < ie; i++) {
+                if ((intptr_t)i - (intptr_t)j >= 0) y[i] += x[i - j] * h[j];
+            }
         }
-        __m256 hsum = sum_m256(acc); sum = _mm256_cvtss_f32(hsum);
-        for (; j < taps; j++) sum += x[i - j] * h[j];
-        y[i] = sum;
     }
 }
 
