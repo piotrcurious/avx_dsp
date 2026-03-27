@@ -61,13 +61,21 @@ void avx_window_hamming(float* x, size_t n);
 
 /**
  * @brief Applies a Finite Impulse Response (FIR) filter to an array.
- *
- * @param x Input signal.
- * @param n Input signal size.
- * @param h Filter coefficients.
- * @param h_size Number of coefficients.
- * @param y Output signal (size n).
  */
 void avx_fir_filter(const float* x, size_t n, const float* h, size_t h_size, float* y);
+
+/**
+ * @brief Multiplies two complex arrays element-wise.
+ */
+void avx_complex_multiply_array(const float* a, const float* b, size_t n, float* out);
+
+/**
+ * @brief Computes the magnitude of complex numbers in an array.
+ *
+ * @param x Input complex array (2*n elements).
+ * @param n Number of complex points.
+ * @param out Output magnitude array (n elements).
+ */
+void avx_vector_magnitude(const float* x, size_t n, float* out);
 
 #endif

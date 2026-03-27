@@ -3,7 +3,7 @@
 # Define some variables
 CC = gcc # the C compiler
 CFLAGS = -Wall -O3 -mavx -mfma # the C compiler flags
-LDFLAGS = -L. -lavx_dsp # the linker flags
+LDFLAGS = -L. -lavx_dsp -lm # the linker flags
 LIB_SRCS = avx_dsp.c # the library source file
 LIB_OBJS = $(LIB_SRCS:.c=.o) # the library object file
 LIB_NAME = libavx_dsp.so # the library name
@@ -16,25 +16,25 @@ all: lib example
 
 # The rule to build the library
 lib: $(LIB_OBJS)
-	$(CC) -shared -o $(LIB_NAME) $(LIB_OBJS)
+	$(CC) -shared -o $(LIB_NAME) $(LIB_OBJS) -lm
 
 # The rule to build the example file
-example: $(EX_OBJS)
+example: lib $(EX_OBJS)
 	$(CC) -o $(EX_NAME) $(EX_OBJS) $(LDFLAGS)
 
 # The rule to build and run basic tests
-tests: tests.c avx_dsp.c
+tests: lib tests.c avx_dsp.c
 	$(CC) $(CFLAGS) tests.c avx_dsp.c -o tests -lm
 	LD_LIBRARY_PATH=. ./tests
 
 # The rule to generate data and run large tests
-tests_large: tests_large.c avx_dsp.c generate_data.py
+tests_large: lib tests_large.c avx_dsp.c generate_data.py
 	python3 generate_data.py
 	$(CC) $(CFLAGS) tests_large.c avx_dsp.c -o tests_large -lm
 	LD_LIBRARY_PATH=. ./tests_large
 
 # The rule to run benchmarks
-benchmark: benchmark.c avx_dsp.c
+benchmark: lib benchmark.c avx_dsp.c
 	$(CC) $(CFLAGS) benchmark.c avx_dsp.c -o benchmark -lm
 	LD_LIBRARY_PATH=. ./benchmark
 

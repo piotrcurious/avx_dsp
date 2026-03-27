@@ -49,9 +49,9 @@ void benchmark_convolution(size_t x_size, size_t h_size) {
     for (int i = 0; i < 100; i++) {
         for (size_t j = 0; j < x_size + h_size - 1; j++) {
             float sum = 0;
-            size_t start_idx = (j >= h_size - 1) ? j - (h_size - 1) : 0;
-            size_t end_idx = (j < x_size) ? j : x_size - 1;
-            for (size_t k = start_idx; k <= end_idx; k++) sum += x[k] * h[j - k];
+            size_t start_s = (j >= h_size - 1) ? j - (h_size - 1) : 0;
+            size_t end_s = (j < x_size) ? j : x_size - 1;
+            for (size_t k = start_s; k <= end_s; k++) sum += x[k] * h[j - k];
             y[j] = sum;
         }
     }
@@ -102,10 +102,32 @@ void benchmark_windowing(size_t size) {
     avx_free(x);
 }
 
+void benchmark_magnitude(size_t size) {
+    float *x = avx_malloc(2 * size);
+    float *mag = avx_malloc(size);
+    for (size_t i = 0; i < 2 * size; i++) x[i] = 1.0f;
+
+    double start = get_time();
+    for (int i = 0; i < 10000; i++) {
+        for (size_t j = 0; j < size; j++) {
+            mag[j] = sqrtf(x[2*j]*x[2*j] + x[2*j+1]*x[2*j+1]);
+        }
+    }
+    double scalar_time = get_time() - start;
+
+    start = get_time();
+    for (int i = 0; i < 10000; i++) avx_vector_magnitude(x, size, mag);
+    double avx_time = get_time() - start;
+
+    printf("Magnitude (%zu complex points): Scalar=%.6fs, AVX=%.6fs, Speedup=%.2fx\n", size, scalar_time, avx_time, scalar_time/avx_time);
+    avx_free(x); avx_free(mag);
+}
+
 int main() {
     benchmark_dot_product(1024);
     benchmark_convolution(1024, 128);
     benchmark_fft(1024);
     benchmark_windowing(1024);
+    benchmark_magnitude(1024);
     return 0;
 }

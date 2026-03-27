@@ -1,67 +1,53 @@
-// An example C file that uses the avx_dsp library
 #include <stdio.h>
+#include <stdlib.h>
 #include "avx_dsp.h"
 
+void print_vector(const char* label, float* v, int n) {
+    printf("%s: ", label);
+    for (int i = 0; i < n; i++) printf("%.2f ", v[i]);
+    printf("\n");
+}
+
 int main() {
-    // Declare some variables
-    __m256 x, y, z; // 256-bit vectors
-    float a[8], b[8], c[8]; // arrays of floats
-    int i; // loop index
+    size_t size = 8;
+    float *x = avx_malloc(size);
+    float *y = avx_malloc(size);
+    float *out = avx_malloc(size);
 
-    // Read 8 floats from stdin and store them in array a
-    printf("Enter 8 floats for vector x:\n");
-    for (i = 0; i < 8; i++) {
-        scanf("%f", &a[i]);
+    for (int i = 0; i < size; i++) {
+        x[i] = i + 1;
+        y[i] = (i < 3) ? 1.0f : 0.0f;
     }
 
-    // Read 8 floats from stdin and store them in array b
-    printf("Enter 8 floats for vector y:\n");
-    for (i = 0; i < 8; i++) {
-        scanf("%f", &b[i]);
-    }
+    print_vector("Input x", x, size);
+    print_vector("Impulse h", y, 3);
 
-    // Load arrays a and b into vectors x and y
-    x = _mm256_loadu_ps(a);
-    y = _mm256_loadu_ps(b);
+    // FIR Filter
+    avx_fir_filter(x, size, y, 3, out);
+    print_vector("FIR Output", out, size);
 
-    // Perform a dot product of x and y using the library function
-    z = avx_dot_product(x, y);
+    // Windowing
+    avx_window_hann(x, size);
+    print_vector("Hann Windowed x", x, size);
 
-    // Store the result in array c
-    _mm256_storeu_ps(c, z);
+    // Dot product
+    float dot = avx_dot_product_array(x, x, size);
+    printf("Self dot product of windowed x: %.2f\n", dot);
 
-    // Print the result
-    printf("The dot product of x and y is:\n");
-    for (i = 0; i < 8; i++) {
-        printf("%f ", c[i]);
-    }
-    printf("\n");
+    // Magnitude
+    float mag_in[4] = {3, 4, 0, 5}; // (3+4j), (0+5j)
+    float mag_out[2];
+    avx_vector_magnitude(mag_in, 2, mag_out);
+    printf("Magnitude: |3+4j| = %.1f, |0+5j| = %.1f\n", mag_out[0], mag_out[1]);
 
-    // Perform a convolution of x and y using the library function
-    z = avx_convolution(x, y);
+    // Complex Multiplication
+    float ca[4] = {1, 0, 0, 1}; // 1 + 0j, 0 + 1j
+    float cb[4] = {0, 1, 1, 0}; // 0 + 1j, 1 + 0j
+    float cout[4];
+    avx_complex_multiply_array(ca, cb, 2, cout);
+    printf("Complex mult: (1+0j)*(0+1j) = %.1f+%.1fj, (0+1j)*(1+0j) = %.1f+%.1fj\n",
+           cout[0], cout[1], cout[2], cout[3]);
 
-    // Store the result in array c
-    _mm256_storeu_ps(c, z);
-
-    // Print the result
-    printf("The convolution of x and h is:\n");
-    for (i = 0; i < 8; i++) {
-        printf("%f ", c[i]);
-    }
-    printf("\n");
-
-    // Perform a fast Fourier transform of x using the library function
-    z = avx_fft(x);
-
-    // Store the result in array c
-    _mm256_storeu_ps(c, z);
-
-    // Print the result
-    printf("The fast Fourier transform of x is:\n");
-    for (i = 0; i < 8; i++) {
-        printf("%f ", c[i]);
-    }
-    printf("\n");
-
+    avx_free(x); avx_free(y); avx_free(out);
     return 0;
 }

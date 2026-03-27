@@ -3,7 +3,6 @@ import struct
 import random
 
 def generate_dot_product(size=1024):
-    # Sine wave * Cosine wave
     a = [math.sin(2 * math.pi * 5 * i / size) for i in range(size)]
     b = [math.cos(2 * math.pi * 5 * i / size) for i in range(size)]
     expected = sum(x * y for x, y in zip(a, b))
@@ -17,7 +16,6 @@ def generate_dot_product(size=1024):
     return size
 
 def generate_convolution(size=1024, h_size=8):
-    # Step function convolved with impulsive response
     x = [1.0 if i < size // 2 else 0.0 for i in range(size)]
     h = [1.0 / h_size] * h_size # Moving average filter
 
@@ -35,7 +33,6 @@ def generate_convolution(size=1024, h_size=8):
     return size, h_size, len(res)
 
 def generate_fft(size=1024):
-    # Sum of two sine waves
     x_64 = []
     for i in range(size):
         val = math.sin(2 * math.pi * 2 * i / size) + 0.5 * math.sin(2 * math.pi * 10 * i / size)
@@ -67,7 +64,49 @@ def generate_fft(size=1024):
         f.write(struct.pack(f"{2*fft_size}f", *X))
     return fft_size
 
+def generate_window(size=1024):
+    x = [1.0] * size
+    hann = [x[i] * 0.5 * (1.0 - math.cos(2.0 * math.pi * i / (size - 1))) for i in range(size)]
+    hamming = [x[i] * (0.54 - 0.46 * math.cos(2.0 * math.pi * i / (size - 1))) for i in range(size)]
+
+    with open("window_x.bin", "wb") as f:
+        f.write(struct.pack(f"{size}f", *x))
+    with open("window_hann_expected.bin", "wb") as f:
+        f.write(struct.pack(f"{size}f", *hann))
+    with open("window_hamming_expected.bin", "wb") as f:
+        f.write(struct.pack(f"{size}f", *hamming))
+    return size
+
+def generate_fir(size=1024, h_size=32):
+    x = [random.uniform(-1, 1) for _ in range(size)]
+    h = [random.uniform(-1, 1) for _ in range(h_size)]
+    y = [0.0] * size
+    for i in range(size):
+        taps = i + 1 if i < h_size else h_size
+        for j in range(taps):
+            y[i] += x[i - j] * h[j]
+
+    with open("fir_x.bin", "wb") as f:
+        f.write(struct.pack(f"{size}f", *x))
+    with open("fir_h.bin", "wb") as f:
+        f.write(struct.pack(f"{h_size}f", *h))
+    with open("fir_expected.bin", "wb") as f:
+        f.write(struct.pack(f"{size}f", *y))
+    return size, h_size
+
+def generate_magnitude(size=1024):
+    x = [random.uniform(-10, 10) for _ in range(2 * size)]
+    mag = [math.sqrt(x[2*i]**2 + x[2*i+1]**2) for i in range(size)]
+    with open("mag_x.bin", "wb") as f:
+        f.write(struct.pack(f"{2*size}f", *x))
+    with open("mag_expected.bin", "wb") as f:
+        f.write(struct.pack(f"{size}f", *mag))
+    return size
+
 if __name__ == "__main__":
     print(f"Dot product size: {generate_dot_product()}")
     print(f"Convolution sizes: {generate_convolution()}")
-    print(f"FFT size: {generate_fft(128)}") # 128 is faster for DFT reference
+    print(f"FFT size: {generate_fft(128)}")
+    print(f"Window size: {generate_window()}")
+    print(f"FIR size: {generate_fir()}")
+    print(f"Magnitude size: {generate_magnitude()}")
